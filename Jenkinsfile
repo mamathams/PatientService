@@ -19,8 +19,16 @@ pipeline {
     }
     stage('Install') {
       steps {
-        sh 'rm -rf node_modules'
-        sh 'export NODE_ENV=development && npm install'
+        sh '''
+          rm -rf node_modules
+          npm config set registry https://registry.npmjs.org/
+          npm config set always-auth false
+          npm config delete proxy || true
+          npm config delete https-proxy || true
+          npm cache clean --force
+          export NODE_ENV=development
+          npm install --prefer-online --no-audit --fund=false
+        '''
       }
     }
     stage('Test') {
