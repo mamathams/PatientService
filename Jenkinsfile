@@ -33,13 +33,15 @@ pipeline {
     }
     stage('SonarQube') {
       steps {
-        withCredentials([string(credentialsId: 'sonar-patientservice', variable: 'SONAR_TOKEN')]) {
-          sh '''
-            export PATH=$PATH:/opt/sonar-scanner/bin
-            sonar-scanner \
-              -Dsonar.host.url=http://13.203.47.35:9000 \
-              -Dsonar.login=$SONAR_TOKEN
-          '''
+        withSonarQubeEnv('sonarqube') {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            sh '''
+              export PATH=$PATH:/opt/sonar-scanner/bin
+              sonar-scanner \
+                -Dsonar.host.url=$SONAR_HOST_URL \
+                -Dsonar.login=$SONAR_TOKEN
+            '''
+          }
         }
       }
     }
