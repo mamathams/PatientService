@@ -20,14 +20,7 @@ pipeline {
     }
     stage('Install') {
       steps {
-        sh '''
-          test -n "${NPM_REGISTRY_URL}" || { echo "NPM_REGISTRY_URL is required"; exit 1; }
-          npm config set registry "${NPM_REGISTRY_URL}"
-          npm config delete //registry.npmjs.org/:_authToken || true
-          npm config delete _auth || true
-          npm cache clean --force
-          npm install --no-audit --fund=false
-        '''
+        sh 'npm install'
       }
     }
     stage('Lint') {
