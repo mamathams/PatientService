@@ -26,7 +26,11 @@ pipeline {
           npm config delete https-proxy || true
           npm cache clean --force
           export NODE_ENV=development
-          npm install --prefer-online --no-audit --fund=false
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --fund=false --loglevel verbose
+          else
+            npm install --prefer-online --no-audit --fund=false --loglevel verbose
+          fi
         '''
       }
     }
