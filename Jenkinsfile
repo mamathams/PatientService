@@ -71,9 +71,7 @@ pipeline {
     }
     stage('Docker Build') {
       steps {
-        script {
-          dockerImage = docker.build("${ECR_SNAPSHOT}:${env.BUILD_NUMBER}")
-        }
+        sh "docker build -t ${ECR_SNAPSHOT}:${env.BUILD_NUMBER} ."
       }
     }
     stage('Trivy Image Scan') {
