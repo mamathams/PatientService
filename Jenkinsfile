@@ -22,7 +22,6 @@ pipeline {
         sh '''
           rm -rf node_modules
           npm config set registry https://registry.npmjs.org/
-          npm config set always-auth false
           npm config delete proxy || true
           npm config delete https-proxy || true
           npm cache clean --force
