@@ -19,33 +19,17 @@ pipeline {
     }
     stage('Install') {
       steps {
-        sh '''
-          rm -rf node_modules
-          npm config set registry https://registry.npmjs.org/
-          npm config delete proxy || true
-          npm config delete https-proxy || true
-          npm cache clean --force
-          export NODE_ENV=development
-          if [ -f package-lock.json ]; then
-            npm ci --no-audit --fund=false --loglevel verbose
-          else
-            npm install --prefer-online --no-audit --fund=false --loglevel verbose
-          fi
-        '''
+        sh 'npm install'
+      }
+    }
+    stage('Lint') {
+      steps {
+        sh 'npm run lint'
       }
     }
     stage('Test') {
-      parallel {
-        stage('Lint') {
-          steps {
-            sh 'npm run lint'
-          }
-        }
-        stage('UnitTest') {
-          steps {
-            sh "RUN_DB_TESTS=${params.RUN_DB_TESTS} npm test -- --coverage"
-          }
-        }
+      steps {
+        sh "RUN_DB_TESTS=${params.RUN_DB_TESTS} npm test -- --coverage"
       }
     }
     stage('SonarQube') {
