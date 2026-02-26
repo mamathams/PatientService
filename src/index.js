@@ -38,11 +38,9 @@ const startServer = async () => {
     await db.sequelize.authenticate();
     console.log('✓ Database connection established');
 
-    // Sync database (use migrations in production)
-    if (config.app.nodeEnv === 'development') {
-      await db.sequelize.sync({ alter: true });
-      console.log('✓ Database synchronized');
-    }
+    // Ensure required tables exist (non-destructive: create missing tables only)
+    await db.sequelize.sync();
+    console.log('Database schema verified');
 
     // Start server
     const server = app.listen(config.app.port, '0.0.0.0', () => {
@@ -91,3 +89,4 @@ if (require.main === module) {
 
 module.exports = app;
 module.exports.startServer = startServer;
+
