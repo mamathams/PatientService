@@ -1,6 +1,14 @@
 const { Patient } = require('../models');
 const { Op } = require('sequelize');
 
+const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const notFoundError = () => {
+  const error = new Error('Patient not found');
+  error.statusCode = 404;
+  return error;
+};
+
 class PatientService {
   /**
    * Create a new patient
@@ -59,12 +67,14 @@ class PatientService {
    */
   async getPatientById(patientId) {
     try {
+      if (!UUID_V4_REGEX.test(patientId)) {
+        throw notFoundError();
+      }
+
       const patient = await Patient.findByPk(patientId);
 
       if (!patient) {
-        const error = new Error('Patient not found');
-        error.statusCode = 404;
-        throw error;
+        throw notFoundError();
       }
 
       return patient;
