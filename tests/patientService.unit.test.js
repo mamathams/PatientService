@@ -83,6 +83,14 @@ describe('patientService unit', () => {
     expect(Patient.findByPk).not.toHaveBeenCalled();
   });
 
+  it('returns 404 when patient id is valid but record does not exist', async () => {
+    const { service, Patient } = loadService();
+    Patient.findByPk.mockResolvedValue(null);
+
+    await expect(service.getPatientById(VALID_UUID)).rejects.toMatchObject({ statusCode: 404 });
+    expect(Patient.findByPk).toHaveBeenCalledWith(VALID_UUID);
+  });
+
   it('updates and deletes patient records', async () => {
     const { service, Patient } = loadService();
     const patient = { update: jest.fn().mockResolvedValue(undefined) };
@@ -107,5 +115,59 @@ describe('patientService unit', () => {
 
     expect(result).toEqual({ total: 10, active: 8, inactive: 2 });
     expect(Patient.count).toHaveBeenCalledTimes(3);
+  });
+
+  it('gets patient by email and searches by criteria', async () => {
+    const { service, Patient, Op } = loadService();
+    Patient.findOne.mockResolvedValue({ id: 'p2' });
+    Patient.findAll.mockResolvedValue([{ id: 'p2' }]);
+
+    const byEmail = await service.getPatientByEmail('a@example.com');
+    const searched = await service.searchPatients({
+      firstName: 'ma',
+      lastName: 'go',
+      email: 'a@example.com',
+      phone: '810',
+      bloodType: 'O+',
+      limit: 5
+    });
+
+    expect(byEmail).toEqual({ id: 'p2' });
+    expect(searched).toEqual([{ id: 'p2' }]);
+    expect(Patient.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 5,
+        where: {
+          firstName: { [Op.iLike]: '%ma%' },
+          lastName: { [Op.iLike]: '%go%' },
+          email: { [Op.iLike]: '%a@example.com%' },
+          phone: { [Op.iLike]: '%810%' },
+          bloodType: 'O+'
+        }
+      })
+    );
+  });
+
+  it('rethrows non-schema errors without retry', async () => {
+    const { service, Patient } = loadService();
+    const failure = { message: 'network error' };
+    Patient.create.mockRejectedValueOnce(failure);
+
+    await expect(service.createPatient({ firstName: 'X' })).rejects.toEqual(failure);
+    expect(Patient.create).toHaveBeenCalledTimes(1);
+    expect(Patient.sequelize.sync).not.toHaveBeenCalled();
+  });
+
+  it('handles missing-table errors reported via original.message', async () => {
+    const { service, Patient } = loadService();
+    const created = { id: 'p3' };
+    Patient.create
+      .mockRejectedValueOnce({ original: { message: 'relation "patients" does not exist' } })
+      .mockResolvedValueOnce(created);
+
+    const result = await service.createPatient({ firstName: 'Retry2' });
+
+    expect(result).toEqual(created);
+    expect(Patient.sequelize.sync).toHaveBeenCalledTimes(1);
   });
 });
