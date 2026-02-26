@@ -148,8 +148,32 @@ pipeline {
       steps {
         script {
           withCredentials([aws(credentialsId: 'aws-creds')]) {
-            sh "aws ecs update-service --cluster ${ECS_CLUSTER} --service ${ECS_SERVICE} --force-new-deployment --region ${AWS_REGION}"
-            sh "aws ecs wait services-stable --cluster ${ECS_CLUSTER} --services ${ECS_SERVICE} --region ${AWS_REGION}"
+            sh '''
+              set -e
+              aws ecs update-service \
+                --cluster ${ECS_CLUSTER} \
+                --service ${ECS_SERVICE} \
+                --force-new-deployment \
+                --region ${AWS_REGION}
+            '''
+            timeout(time: 12, unit: 'MINUTES') {
+              sh '''
+                set -e
+                if ! aws ecs wait services-stable \
+                  --cluster ${ECS_CLUSTER} \
+                  --services ${ECS_SERVICE} \
+                  --region ${AWS_REGION}; then
+                  echo "ECS service did not stabilize. Recent service events:"
+                  aws ecs describe-services \
+                    --cluster ${ECS_CLUSTER} \
+                    --services ${ECS_SERVICE} \
+                    --region ${AWS_REGION} \
+                    --query "services[0].events[0:10].[createdAt,message]" \
+                    --output table || true
+                  exit 1
+                fi
+              '''
+            }
           }
         }
       }
