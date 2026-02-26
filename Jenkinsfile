@@ -27,9 +27,46 @@ pipeline {
         sh 'npm run lint'
       }
     }
+    stage('Start DB for Tests') {
+      when {
+        expression { return params.RUN_DB_TESTS }
+      }
+      steps {
+        sh '''
+          set -e
+          if command -v docker-compose >/dev/null 2>&1; then
+            docker-compose up -d postgres
+          else
+            docker compose up -d postgres
+          fi
+          for i in $(seq 1 30); do
+            if docker exec patient_db pg_isready -U postgres >/dev/null 2>&1; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in time"
+          exit 1
+        '''
+      }
+    }
     stage('Test') {
       steps {
-        sh "RUN_DB_TESTS=${params.RUN_DB_TESTS} npm test -- --coverage"
+        sh '''
+          if [ "${RUN_DB_TESTS}" = "true" ]; then
+            DB_DIALECT=postgres \
+            DB_HOST=127.0.0.1 \
+            DB_PORT=5432 \
+            DB_USER=postgres \
+            DB_PASSWORD=postgres \
+            DB_NAME=hospital_patient_db \
+            RUN_DB_TESTS=true \
+            npm test -- --coverage
+          else
+            RUN_DB_TESTS=false npm test -- --coverage
+          fi
+        '''
       }
     }
     stage('SonarQube') {
@@ -119,6 +156,15 @@ pipeline {
     }
   }
   post {
-    always { cleanWs() }
+    always {
+      sh '''
+        if command -v docker-compose >/dev/null 2>&1; then
+          docker-compose down -v || true
+        else
+          docker compose down -v || true
+        fi
+      '''
+      cleanWs()
+    }
   }
 }

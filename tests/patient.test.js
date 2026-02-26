@@ -1,10 +1,20 @@
 const request = require('supertest');
 const app = require('../src/index');
+const db = require('../src/models');
 const runDbTests = process.env.RUN_DB_TESTS === 'true';
 const describeIfDb = runDbTests ? describe : describe.skip;
 
 describeIfDb('Patient API', () => {
   let patientId;
+
+  beforeAll(async () => {
+    await db.sequelize.authenticate();
+    await db.sequelize.sync({ force: true });
+  });
+
+  afterAll(async () => {
+    await db.sequelize.close();
+  });
 
   // Create patient
   describe('POST /api/v1/patients', () => {
