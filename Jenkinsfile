@@ -156,24 +156,84 @@ pipeline {
                 --force-new-deployment \
                 --region ${AWS_REGION}
             '''
-            timeout(time: 12, unit: 'MINUTES') {
-              sh '''
-                set -e
-                if ! aws ecs wait services-stable \
+            sh '''
+              set -e
+              MAX_LOOPS=40
+              SLEEP_SECONDS=15
+
+              echo "Waiting for ECS service stabilization..."
+              for i in $(seq 1 ${MAX_LOOPS}); do
+                PRIMARY_STATE=$(aws ecs describe-services \
                   --cluster ${ECS_CLUSTER} \
                   --services ${ECS_SERVICE} \
-                  --region ${AWS_REGION}; then
-                  echo "ECS service did not stabilize. Recent service events:"
-                  aws ecs describe-services \
-                    --cluster ${ECS_CLUSTER} \
-                    --services ${ECS_SERVICE} \
-                    --region ${AWS_REGION} \
-                    --query "services[0].events[0:10].[createdAt,message]" \
-                    --output table || true
-                  exit 1
+                  --region ${AWS_REGION} \
+                  --query "services[0].deployments[?status=='PRIMARY']|[0].rolloutState" \
+                  --output text)
+
+                RUNNING_COUNT=$(aws ecs describe-services \
+                  --cluster ${ECS_CLUSTER} \
+                  --services ${ECS_SERVICE} \
+                  --region ${AWS_REGION} \
+                  --query "services[0].runningCount" \
+                  --output text)
+
+                DESIRED_COUNT=$(aws ecs describe-services \
+                  --cluster ${ECS_CLUSTER} \
+                  --services ${ECS_SERVICE} \
+                  --region ${AWS_REGION} \
+                  --query "services[0].desiredCount" \
+                  --output text)
+
+                PENDING_COUNT=$(aws ecs describe-services \
+                  --cluster ${ECS_CLUSTER} \
+                  --services ${ECS_SERVICE} \
+                  --region ${AWS_REGION} \
+                  --query "services[0].pendingCount" \
+                  --output text)
+
+                echo "Attempt ${i}/${MAX_LOOPS}: rollout=${PRIMARY_STATE}, running=${RUNNING_COUNT}, desired=${DESIRED_COUNT}, pending=${PENDING_COUNT}"
+
+                if [ "${PRIMARY_STATE}" = "FAILED" ]; then
+                  echo "Primary deployment failed."
+                  break
                 fi
-              '''
-            }
+
+                if [ "${PRIMARY_STATE}" = "COMPLETED" ] && [ "${RUNNING_COUNT}" = "${DESIRED_COUNT}" ] && [ "${PENDING_COUNT}" = "0" ]; then
+                  echo "ECS service is stable."
+                  exit 0
+                fi
+
+                sleep ${SLEEP_SECONDS}
+              done
+
+              echo "ECS service did not stabilize. Recent service events:"
+              aws ecs describe-services \
+                --cluster ${ECS_CLUSTER} \
+                --services ${ECS_SERVICE} \
+                --region ${AWS_REGION} \
+                --query "services[0].events[0:15].[createdAt,message]" \
+                --output table || true
+
+              STOPPED_TASKS=$(aws ecs list-tasks \
+                --cluster ${ECS_CLUSTER} \
+                --service-name ${ECS_SERVICE} \
+                --desired-status STOPPED \
+                --region ${AWS_REGION} \
+                --query "taskArns" \
+                --output text || true)
+
+              if [ -n "${STOPPED_TASKS}" ]; then
+                echo "Recent stopped task reasons:"
+                aws ecs describe-tasks \
+                  --cluster ${ECS_CLUSTER} \
+                  --tasks ${STOPPED_TASKS} \
+                  --region ${AWS_REGION} \
+                  --query "tasks[*].{task:taskArn,stoppedReason:stoppedReason,containerReasons:containers[*].reason}" \
+                  --output table || true
+              fi
+
+              exit 1
+            '''
           }
         }
       }
