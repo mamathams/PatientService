@@ -2,11 +2,42 @@ const { Patient } = require('../models');
 const { Op } = require('sequelize');
 
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+let schemaReady = false;
 
 const notFoundError = () => {
   const error = new Error('Patient not found');
   error.statusCode = 404;
   return error;
+};
+
+const isMissingTableError = (error) => {
+  const message = String(error?.original?.message || error?.message || '').toLowerCase();
+  return (
+    message.includes("doesn't exist") ||
+    message.includes('does not exist') ||
+    message.includes('relation "patients" does not exist') ||
+    message.includes('no such table: patients')
+  );
+};
+
+const ensureSchema = async () => {
+  if (!schemaReady) {
+    await Patient.sequelize.sync();
+    schemaReady = true;
+  }
+};
+
+const withSchemaRecovery = async (operation) => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isMissingTableError(error)) {
+      throw error;
+    }
+
+    await ensureSchema();
+    return operation();
+  }
 };
 
 class PatientService {
@@ -15,7 +46,7 @@ class PatientService {
    */
   async createPatient(data) {
     try {
-      const patient = await Patient.create(data);
+      const patient = await withSchemaRecovery(() => Patient.create(data));
       return patient;
     } catch (error) {
       throw error;
@@ -44,12 +75,14 @@ class PatientService {
         ];
       }
 
-      const { count, rows } = await Patient.findAndCountAll({
-        where,
-        offset,
-        limit,
-        order: [['createdAt', 'DESC']]
-      });
+      const { count, rows } = await withSchemaRecovery(() =>
+        Patient.findAndCountAll({
+          where,
+          offset,
+          limit,
+          order: [['createdAt', 'DESC']]
+        })
+      );
 
       return {
         patients: rows,
@@ -71,7 +104,7 @@ class PatientService {
         throw notFoundError();
       }
 
-      const patient = await Patient.findByPk(patientId);
+      const patient = await withSchemaRecovery(() => Patient.findByPk(patientId));
 
       if (!patient) {
         throw notFoundError();
@@ -88,7 +121,7 @@ class PatientService {
    */
   async getPatientByEmail(email) {
     try {
-      const patient = await Patient.findOne({ where: { email } });
+      const patient = await withSchemaRecovery(() => Patient.findOne({ where: { email } }));
       return patient;
     } catch (error) {
       throw error;
@@ -154,10 +187,12 @@ class PatientService {
         where.bloodType = criteria.bloodType;
       }
 
-      const patients = await Patient.findAll({
-        where,
-        limit: criteria.limit || 20
-      });
+      const patients = await withSchemaRecovery(() =>
+        Patient.findAll({
+          where,
+          limit: criteria.limit || 20
+        })
+      );
 
       return patients;
     } catch (error) {
@@ -170,26 +205,32 @@ class PatientService {
    */
   async getPatientStats() {
     try {
-      const stats = await Patient.findAll({
-        attributes: [
-          ['status', 'status'],
-          ['gender', 'gender']
-        ],
-        raw: true,
-        subQuery: false
-      });
+      const stats = await withSchemaRecovery(() =>
+        Patient.findAll({
+          attributes: [
+            ['status', 'status'],
+            ['gender', 'gender']
+          ],
+          raw: true,
+          subQuery: false
+        })
+      );
 
       const groupedStats = stats.reduce((acc, stat) => {
         return acc;
       }, {});
 
-      const totalPatients = await Patient.count();
-      const activePatients = await Patient.count({
-        where: { status: 'active' }
-      });
-      const inactivePatients = await Patient.count({
-        where: { status: 'inactive' }
-      });
+      const totalPatients = await withSchemaRecovery(() => Patient.count());
+      const activePatients = await withSchemaRecovery(() =>
+        Patient.count({
+          where: { status: 'active' }
+        })
+      );
+      const inactivePatients = await withSchemaRecovery(() =>
+        Patient.count({
+          where: { status: 'inactive' }
+        })
+      );
 
       return {
         total: totalPatients,
