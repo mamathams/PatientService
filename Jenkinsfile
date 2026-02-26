@@ -27,30 +27,6 @@ pipeline {
         sh 'npm run lint'
       }
     }
-    stage('Start DB for Tests') {
-      when {
-        expression { return params.RUN_DB_TESTS }
-      }
-      steps {
-        sh '''
-          set -e
-          if command -v docker-compose >/dev/null 2>&1; then
-            docker-compose up -d postgres
-          else
-            docker compose up -d postgres
-          fi
-          for i in $(seq 1 30); do
-            if docker exec patient_db pg_isready -U postgres >/dev/null 2>&1; then
-              echo "Postgres is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Postgres did not become ready in time"
-          exit 1
-        '''
-      }
-    }
     stage('Test') {
       steps {
         sh '''
